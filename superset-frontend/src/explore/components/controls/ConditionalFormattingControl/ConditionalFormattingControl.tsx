@@ -19,9 +19,11 @@
 import { useEffect, useState } from 'react';
 import { t } from '@apache-superset/core/translation';
 import { styled, css } from '@apache-superset/core/theme';
+import { GenericDataType } from '@apache-superset/core/common';
 import { Comparator } from '@superset-ui/chart-controls';
 import { Icons } from '@superset-ui/core/components/Icons';
 import ControlHeader from 'src/explore/components/ControlHeader';
+import { extendedDayjs } from '@superset-ui/core/utils/dates';
 import { FormattingPopover } from './FormattingPopover';
 import {
   ConditionalFormattingConfig,
@@ -127,6 +129,16 @@ const ConditionalFormattingControl = ({
     targetValueRight,
   }: ConditionalFormattingConfig) => {
     const columnName = (column && verboseMap?.[column]) ?? column;
+    const isTemporalColumn =
+      columnOptions.find(option => option.value === column)?.dataType ===
+      GenericDataType.Temporal;
+    // Temporal target values are stored as the epoch milliseconds of a
+    // UTC-interpreted picker value; render the UTC fields so the label
+    // matches what the date picker shows.
+    const formatTargetValue = (value: number | string | undefined) =>
+      isTemporalColumn && typeof value === 'number'
+        ? extendedDayjs.utc(value).format('YYYY-MM-DD HH:mm:ss')
+        : value;
     switch (operator) {
       case Comparator.None:
         return `${columnName}`;
@@ -144,7 +156,7 @@ const ConditionalFormattingControl = ({
       case Comparator.IsNotNull:
         return `${columnName} ${operator}`;
       default:
-        return `${columnName} ${operator} ${targetValue}`;
+        return `${columnName} ${operator} ${formatTargetValue(targetValue)}`;
     }
   };
 

@@ -26,6 +26,10 @@ const columnOptions = [
   { label: 'My Column', value: 'my_col', dataType: GenericDataType.Boolean },
 ];
 
+const temporalColumnOptions = [
+  { label: 'My Date', value: 'my_date', dataType: GenericDataType.Temporal },
+];
+
 const defaultProps = {
   columnOptions,
   verboseMap: {} as Record<string, string>,
@@ -101,3 +105,24 @@ test('renders verbose column name when available', () => {
   );
   expect(screen.getByText('My Column is false')).toBeInTheDocument();
 });
+
+test('renders temporal target values as readable dates in the label', () => {
+  const value: ConditionalFormattingConfig[] = [
+    {
+      column: 'my_date',
+      operator: Comparator.GreaterThan,
+      // Stored as the UTC-interpreted picker value, like handleSubmit saves it
+      targetValue: Date.UTC(2024, 0, 15, 10, 30, 0),
+      colorScheme: '#FF0000',
+    },
+  ];
+  render(
+    <ConditionalFormattingControl
+      {...defaultProps}
+      columnOptions={temporalColumnOptions}
+      value={value}
+    />,
+  );
+  expect(screen.getByText('my_date > 2024-01-15 10:30:00')).toBeInTheDocument();
+});
+
