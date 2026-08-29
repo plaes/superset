@@ -31,9 +31,11 @@ import { type RGBColor } from '@superset-ui/core/components';
 
 export type ConditionalFormattingConfig = {
   operator?: Comparator;
-  targetValue?: number;
-  targetValueLeft?: number;
-  targetValueRight?: number;
+  // Temporal targets are stored as epoch milliseconds; string columns
+  // store the matched text.
+  targetValue?: number | string;
+  targetValueLeft?: number | string;
+  targetValueRight?: number | string;
   column?: string;
   colorScheme?: RGBColor | string;
   toAllRow?: boolean;

@@ -33,6 +33,7 @@ import {
   PercentDenominator,
 } from '@superset-ui/chart-controls';
 import { GenericDataType } from '@apache-superset/core/common';
+import dayjs from 'dayjs';
 import { FormattingPopoverContent } from './FormattingPopoverContent';
 
 const mockOnChange = jest.fn();
@@ -40,6 +41,10 @@ const mockOnChange = jest.fn();
 const columns = [
   { label: 'Column 1', value: 'column1', dataType: GenericDataType.Numeric },
   { label: 'Column 2', value: 'column2', dataType: GenericDataType.Numeric },
+];
+
+const columnsTemporalType = [
+  { label: 'Column 1', value: 'column1', dataType: GenericDataType.Temporal },
 ];
 
 const columnsStringType = [
@@ -1336,4 +1341,204 @@ test('opens a saved rule with the stored operator, target value, bound unit, and
         ?.querySelector('.ant-select-content'),
     ).toHaveTextContent('Column sum');
   });
+});
+
+test('previously saved rules stay intact when the chart has temporal columns', async () => {
+  // A rule saved before temporal columns could be comparison targets: a
+  // numeric rule whose formatting column is a date column (always allowed).
+  // The comparison column list is what pre-feature charts offered (numeric
+  // only), while allColumns has always contained every column.
+  const savedConfig = {
+    column: 'column1',
+    columnFormatting: 'date_col',
+    operator: Comparator.GreaterThan,
+    targetValue: 5,
+    colorScheme: '#FF0000',
+  };
+  const allColumns = [
+    ...columns,
+    { label: 'Date', value: 'date_col', dataType: GenericDataType.Temporal },
+  ];
+  render(
+    <FormattingPopoverContent
+      onChange={mockOnChange}
+      columns={columns}
+      allColumns={allColumns}
+      config={savedConfig}
+    />,
+  );
+
+  // The saved numeric target renders as a number input, not a date picker
+  const targetValue = await screen.findByLabelText('Target value');
+  expect(targetValue).toHaveValue('5');
+  expect(targetValue.closest('.ant-picker')).not.toBeInTheDocument();
+
+  // Re-applying without edits round-trips the saved values
+  fireEvent.click(screen.getByText('Apply'));
+  await waitFor(() => {
+    expect(mockOnChange).toHaveBeenCalled();
+  });
+  const submitted =
+    mockOnChange.mock.calls[mockOnChange.mock.calls.length - 1][0];
+  expect(submitted.column).toBe('column1');
+  expect(submitted.columnFormatting).toBe('date_col');
+  expect(submitted.operator).toBe(Comparator.GreaterThan);
+  expect(submitted.targetValue).toBe(5);
+  expect(submitted.colorScheme).toBe('#FF0000');
+});
+
+test('displays a date picker for the temporal target value', async () => {
+  render(
+    <FormattingPopoverContent
+      onChange={mockOnChange}
+      columns={columnsTemporalType}
+    />,
+  );
+
+  fireEvent.change(screen.getAllByLabelText('Operator')[0], {
+    target: { value: Comparator.GreaterThan },
+  });
+  fireEvent.click(await screen.findByTitle('>'));
+
+  const targetValue = await screen.findByLabelText('Target value');
+  expect(targetValue.closest('.ant-picker')).toBeInTheDocument();
+});
+
+test('saves the temporal target value as epoch milliseconds', async () => {
+  render(
+    <FormattingPopoverContent
+      onChange={mockOnChange}
+      columns={columnsTemporalType}
+    />,
+  );
+
+  fireEvent.change(screen.getAllByLabelText('Operator')[0], {
+    target: { value: Comparator.GreaterThan },
+  });
+  fireEvent.click(await screen.findByTitle('>'));
+
+  const targetValue = await screen.findByLabelText('Target value');
+  fireEvent.input(targetValue, {
+    target: { value: '2024-01-15 10:30:00' },
+  });
+  fireEvent.keyDown(targetValue, {
+    key: 'Enter',
+    code: 'Enter',
+    charCode: 13,
+  });
+
+  fireEvent.click(screen.getByText('Apply'));
+
+  await waitFor(() => {
+    expect(mockOnChange).toHaveBeenCalled();
+  });
+  const config = mockOnChange.mock.calls[mockOnChange.mock.calls.length - 1][0];
+  expect(config.operator).toBe(Comparator.GreaterThan);
+  // The typed value is interpreted as UTC, not in the viewer's timezone
+  expect(config.targetValue).toBe(Date.UTC(2024, 0, 15, 10, 30, 0));
+});
+
+test('displays a stored temporal target by its UTC fields', async () => {
+  render(
+    <FormattingPopoverContent
+      onChange={mockOnChange}
+      columns={columnsTemporalType}
+      config={{
+        column: 'column1',
+        operator: Comparator.GreaterThan,
+        // 2003-05-07T00:00:00Z, the storage convention for date-only values
+        targetValue: Date.UTC(2003, 4, 7),
+        colorScheme: '#FF0000',
+      }}
+    />,
+  );
+  const targetValue = await screen.findByLabelText('Target value');
+  await waitFor(() => {
+    expect(targetValue).toHaveValue('2003-05-07 00:00:00');
+  });
+});
+
+test('interprets a typed temporal target as UTC', async () => {
+  render(
+    <FormattingPopoverContent
+      onChange={mockOnChange}
+      columns={columnsTemporalType}
+    />,
+  );
+
+  fireEvent.change(screen.getAllByLabelText('Operator')[0], {
+    target: { value: Comparator.GreaterThan },
+  });
+  fireEvent.click(await screen.findByTitle('>'));
+
+  const targetValue = await screen.findByLabelText('Target value');
+  fireEvent.input(targetValue, {
+    target: { value: '2003-05-07 00:00:00' },
+  });
+  fireEvent.keyDown(targetValue, {
+    key: 'Enter',
+    code: 'Enter',
+    charCode: 13,
+  });
+  expect(targetValue).toHaveValue('2003-05-07 00:00:00');
+
+  fireEvent.click(screen.getByText('Apply'));
+  await waitFor(() => {
+    expect(mockOnChange).toHaveBeenCalled();
+  });
+  const config = mockOnChange.mock.calls[mockOnChange.mock.calls.length - 1][0];
+  // Stored as 2003-05-07T00:00:00Z regardless of the viewer's timezone
+  expect(config.targetValue).toBe(Date.UTC(2003, 4, 7, 0, 0, 0));
+});
+
+test('The Use Gradient checkbox is displayed for temporal data types', () => {
+  render(
+    <FormattingPopoverContent
+      onChange={mockOnChange}
+      columns={columnsTemporalType}
+      allColumns={columnsTemporalType}
+    />,
+  );
+
+  expect(screen.queryByText('Use gradient')).toBeInTheDocument();
+});
+
+test('parses a string target value for a temporal column', async () => {
+  const errors: unknown[] = [];
+  const origError = console.error;
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+  render(
+    <FormattingPopoverContent
+      onChange={mockOnChange}
+      columns={columnsTemporalType}
+      config={{
+        column: 'column1',
+        operator: Comparator.GreaterThan,
+        // Stored values may be an ISO string instead of epoch ms
+        targetValue: '2024-01-15T10:30:00.000Z',
+        colorScheme: '#FF0000',
+      }}
+    />,
+  );
+  const targetValue = await screen.findByLabelText('Target value');
+  expect(targetValue.closest('.ant-picker')).toBeInTheDocument();
+  // The picker shows the UTC fields of the stored instant instead of
+  // crashing in isValidate
+  await waitFor(() => {
+    expect(targetValue).toHaveValue('2024-01-15 10:30:00');
+  });
+  // Saving the rule stores the value as epoch milliseconds
+  fireEvent.click(screen.getByText('Apply'));
+  await waitFor(() => {
+    expect(mockOnChange).toHaveBeenCalled();
+  });
+  const saved = mockOnChange.mock.calls[mockOnChange.mock.calls.length - 1][0];
+  expect(saved.targetValue).toBe(dayjs('2024-01-15T10:30:00.000Z').valueOf());
+  console.error = origError;
+  const typeErrors = errors.filter(e =>
+    String(Array.isArray(e) ? e[0] : e).includes('isValid'),
+  );
+  expect(typeErrors).toEqual([]);
 });

@@ -37,13 +37,16 @@ import {
   Col,
   Row,
   Checkbox,
+  DatePicker,
   type FormProps,
 } from '@superset-ui/core/components';
+import { extendedDayjs, type Dayjs } from '@superset-ui/core/utils/dates';
 import { ConditionalFormattingConfig, ColumnOption } from './types';
 import {
   operatorOptions,
   stringOperatorOptions,
   booleanOperatorOptions,
+  temporalOperatorOptions,
   formattingOptions,
   colorScheme,
   boundUnitOptions,
@@ -262,6 +265,9 @@ const renderOperator = ({
     case GenericDataType.Boolean:
       options = booleanOperatorOptions;
       break;
+    case GenericDataType.Temporal:
+      options = temporalOperatorOptions;
+      break;
     default:
       options = operatorOptions;
   }
@@ -438,6 +444,7 @@ const renderOperatorFields = (
 ) => {
   const columnTypeString = columnType === GenericDataType.String;
   const columnTypeBoolean = columnType === GenericDataType.Boolean;
+  const columnTypeTemporal = columnType === GenericDataType.Temporal;
   const operatorColSpan = columnTypeString || columnTypeBoolean ? 8 : 6;
   const valueColSpan = columnTypeString ? 16 : 18;
 
@@ -463,6 +470,17 @@ const renderOperatorFields = (
   const showBoundFields = !columnTypeString && isOperatorBoundable(operator);
   const showDivergingFields = !columnTypeString && isOperatorNone(operator);
 
+  // The date picker must be rendered directly under the FormItem so that
+  // the injected `id`/`value` props reach the picker (and the label stays
+  // associated with the input).
+  const targetValueInput = columnTypeTemporal ? (
+    <DatePicker showTime />
+  ) : columnTypeString ? (
+    <FullWidthInput />
+  ) : (
+    <FullWidthInputNumber />
+  );
+
   return isOperatorNone(operator) ? (
     <>
       <Row gutter={12}>
@@ -484,7 +502,11 @@ const renderOperatorFields = (
           validateTrigger="onBlur"
           trigger="onBlur"
         >
-          <FullWidthInputNumber />
+          {columnTypeTemporal ? (
+            <DatePicker showTime />
+          ) : (
+            <FullWidthInputNumber />
+          )}
         </FormItem>
       </Col>
       <Col span={6}>{renderOperator({ columnType, config })}</Col>
@@ -497,7 +519,11 @@ const renderOperatorFields = (
           validateTrigger="onBlur"
           trigger="onBlur"
         >
-          <FullWidthInputNumber />
+          {columnTypeTemporal ? (
+            <DatePicker showTime />
+          ) : (
+            <FullWidthInputNumber />
+          )}
         </FormItem>
       </Col>
     </Row>
@@ -513,7 +539,7 @@ const renderOperatorFields = (
             label={t('Target value')}
             rules={rulesRequired}
           >
-            {columnTypeString ? <FullWidthInput /> : <FullWidthInputNumber />}
+            {targetValueInput}
           </FormItem>
         </Col>
       </Row>
@@ -595,13 +621,25 @@ export const FormattingPopoverContent = ({
     () => allColumns.filter(col => col.dataType === GenericDataType.Numeric),
     [allColumns],
   );
+  // Gradients scale the color intensity against the value range, which works
+  // for numeric columns (raw values) and temporal columns (epoch ms).
+  const gradientEligibleColumns = useMemo(
+    () =>
+      allColumns.filter(
+        col =>
+          col.dataType === GenericDataType.Numeric ||
+          col.dataType === GenericDataType.Temporal,
+      ),
+    [allColumns],
+  );
   const visibleUseGradient = useMemo(
     () =>
-      numericColumns.length > 0
-        ? numericColumns.some((col: ColumnOption) => col.value === column) &&
-          objectFormatting === ObjectFormattingEnum.BACKGROUND_COLOR
+      gradientEligibleColumns.length > 0
+        ? gradientEligibleColumns.some(
+            (col: ColumnOption) => col.value === column,
+          ) && objectFormatting === ObjectFormattingEnum.BACKGROUND_COLOR
         : false,
-    [column, numericColumns, objectFormatting],
+    [column, gradientEligibleColumns, objectFormatting],
   );
 
   const handleFinish = useCallback(
@@ -627,14 +665,124 @@ export const FormattingPopoverContent = ({
           defaultOperator = booleanOperatorOptions[0].value;
           break;
 
+        case GenericDataType.Temporal:
+          defaultOperator = temporalOperatorOptions[0].value;
+          break;
+
         default:
           defaultOperator = operatorOptions[0].value;
       }
 
+      // Reset the target values as well, since a stale value from the
+      // previous column type (e.g. a number in a date picker) is invalid
       form.setFieldsValue({
         operator: defaultOperator,
+        targetValue: undefined,
+        targetValueLeft: undefined,
+        targetValueRight: undefined,
       });
     }
+  };
+
+  // Date pickers require Dayjs values, while stored configs keep temporal
+  // target values as epoch milliseconds. Convert on the way in...
+  const initialValues = useMemo(() => {
+    if (!formInitialValues) {
+      return formInitialValues;
+    }
+    const configColumnType = columns.find(
+      item => item.value === formInitialValues.column,
+    )?.dataType;
+    if (configColumnType !== GenericDataType.Temporal) {
+      return formInitialValues;
+    }
+    // Date pickers only accept Dayjs values; stored configs keep epoch
+    // milliseconds. Parse whatever is stored and drop what is unparsable
+    // so the picker never receives a raw value it cannot validate.
+    // The picker displays the UTC fields of the stored instant, so a target
+    // such as "2023-05-07 00:00" edits 2023-05-07T00:00:00Z (the storage
+    // convention for date-only values) in any viewer timezone.
+    const toDayjs = (
+      value: number | string | Dayjs | null | undefined,
+    ): Dayjs | undefined => {
+      if (value == null) {
+        return undefined;
+      }
+      const parsed = extendedDayjs(value);
+      if (!parsed.isValid()) {
+        return undefined;
+      }
+      // Strings without a timezone designator are naive: their fields are
+      // already the (UTC) fields to display
+      if (typeof value === 'string' && !/Z|[+-]\d{2}:?\d{2}$/.test(value)) {
+        return parsed;
+      }
+      // Format the UTC fields of the stored instant as a naive string and
+      // parse it locally, so the picker displays exactly those fields
+      const instant = new Date(parsed.valueOf());
+      const pad2 = (n: number) => String(n).padStart(2, '0');
+      return extendedDayjs(
+        `${instant.getUTCFullYear()}-${pad2(instant.getUTCMonth() + 1)}-${pad2(
+          instant.getUTCDate(),
+        )} ${pad2(instant.getUTCHours())}:${pad2(instant.getUTCMinutes())}:${pad2(instant.getUTCSeconds())}`,
+      );
+    };
+    return {
+      ...formInitialValues,
+      targetValue: toDayjs(formInitialValues.targetValue),
+      targetValueLeft: toDayjs(formInitialValues.targetValueLeft),
+      targetValueRight: toDayjs(formInitialValues.targetValueRight),
+    };
+  }, [formInitialValues, columns]);
+
+  // ...and back to epoch milliseconds on save.
+  const handleSubmit = (
+    values: ConditionalFormattingConfig & {
+      targetValue?: Dayjs | number | string | null;
+      targetValueLeft?: Dayjs | number | string | null;
+      targetValueRight?: Dayjs | number | string | null;
+    },
+  ) => {
+    if (columnType !== GenericDataType.Temporal) {
+      handleFinish(values);
+      return;
+    }
+    // The date picker passes Dayjs objects (or null when cleared); stored
+    // configs keep epoch milliseconds. The picker's fields are interpreted
+    // as UTC (see toDayjs), so a target entered as "2023-05-07 00:00"
+    // stores 2023-05-07T00:00:00Z regardless of the viewer's timezone.
+    const toEpochMs = (
+      value: Dayjs | number | string | null | undefined,
+    ): number | undefined => {
+      if (value == null) {
+        return undefined;
+      }
+      if (typeof value === 'number') {
+        // Already an epoch millisecond value
+        return value;
+      }
+      const parsed = extendedDayjs.isDayjs(value)
+        ? value
+        : extendedDayjs(value);
+      if (!parsed.isValid()) {
+        return undefined;
+      }
+      return Date.UTC(
+        parsed.year(),
+        parsed.month(),
+        parsed.date(),
+        parsed.hour(),
+        parsed.minute(),
+        parsed.second(),
+        parsed.millisecond(),
+      );
+    };
+    handleFinish({
+      ...values,
+      targetValue: toEpochMs(values.targetValue),
+      targetValueLeft: toEpochMs(values.targetValueLeft),
+      targetValueRight: toEpochMs(values.targetValueRight),
+    });
   };
 
   const handleObjectChange = (value: ObjectFormattingEnum) => {
@@ -673,8 +821,8 @@ export const FormattingPopoverContent = ({
   return (
     <Form
       form={form}
-      onFinish={handleFinish}
-      initialValues={formInitialValues}
+      onFinish={handleSubmit}
+      initialValues={initialValues}
       requiredMark="optional"
       layout="vertical"
     >

@@ -54,6 +54,18 @@ export const booleanOperatorOptions = [
   { value: Comparator.IsNotNull, label: t('is not null') },
 ];
 
+// Temporal values are compared as epoch milliseconds, so the numeric
+// comparison set applies to date/datetime/time columns.
+export const temporalOperatorOptions = [
+  { value: Comparator.None, label: t('None') },
+  { value: Comparator.GreaterThan, label: '>' },
+  { value: Comparator.LessThan, label: '<' },
+  { value: Comparator.GreaterOrEqual, label: '≥' },
+  { value: Comparator.LessOrEqual, label: '≤' },
+  { value: Comparator.Equal, label: '=' },
+  { value: Comparator.NotEqual, label: '≠' },
+];
+
 export const formattingOptions = [
   {
     value: ObjectFormattingEnum.BACKGROUND_COLOR,
