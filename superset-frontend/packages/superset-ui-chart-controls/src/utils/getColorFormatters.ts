@@ -44,20 +44,30 @@ const READABLE_TEXT_COLORS = [
   { r: 255, g: 255, b: 255 },
 ];
 
+const toNumber = (value: number | string | Date): number =>
+  value instanceof Date
+    ? value.getTime()
+    : typeof value === 'string'
+      ? parseFloat(value)
+      : value;
+
 export const getOpacity = (
-  value: number | string | boolean | null,
-  cutoffPoint: number | string,
-  extremeValue: number | string,
+  value: number | string | boolean | Date | null,
+  cutoffPoint: number | string | Date,
+  extremeValue: number | string | Date,
   minOpacity = MIN_OPACITY_BOUNDED,
   maxOpacity = MAX_OPACITY,
 ) => {
-  if (extremeValue === cutoffPoint || typeof value !== 'number') {
+  // Temporal values are compared as epoch milliseconds
+  const numValue = value instanceof Date ? value.getTime() : value;
+  if (
+    toNumber(extremeValue) === toNumber(cutoffPoint) ||
+    typeof numValue !== 'number'
+  ) {
     return maxOpacity;
   }
-  const numCutoffPoint =
-    typeof cutoffPoint === 'string' ? parseFloat(cutoffPoint) : cutoffPoint;
-  const numExtremeValue =
-    typeof extremeValue === 'string' ? parseFloat(extremeValue) : extremeValue;
+  const numCutoffPoint = toNumber(cutoffPoint);
+  const numExtremeValue = toNumber(extremeValue);
 
   if (isNaN(numCutoffPoint) || isNaN(numExtremeValue)) {
     return maxOpacity;
@@ -68,7 +78,7 @@ export const getOpacity = (
     round(
       Math.abs(
         ((maxOpacity - minOpacity) / (numExtremeValue - numCutoffPoint)) *
-          (value - numCutoffPoint),
+          (numValue - numCutoffPoint),
       ) + minOpacity,
       2,
     ),
@@ -147,7 +157,7 @@ export const getColorFunction = (
     boundUnit,
     percentDenominator,
   }: ConditionalFormattingConfig,
-  columnValues: number[] | string[] | (boolean | null)[],
+  columnValues: (number | string | boolean | Date | null)[],
   alpha?: boolean,
 ) => {
   const resolvePercentBound = (bound: number | undefined) => {
@@ -182,6 +192,10 @@ export const getColorFunction = (
 
   let minOpacity = MIN_OPACITY_BOUNDED;
   const maxOpacity = MAX_OPACITY;
+  // Temporal values are compared as epoch milliseconds
+  const normalizedValues = columnValues.map(value =>
+    value instanceof Date ? value.getTime() : value,
+  ) as number[] | string[] | (boolean | null)[];
 
   let comparatorFunction: (
     value: number | string | boolean | null,
@@ -388,14 +402,17 @@ export const getColorFunction = (
       break;
   }
 
-  return (value: number | string | boolean | null) => {
+  return (value: number | string | boolean | Date | null) => {
     if (isBlank(value) && operator !== Comparator.IsNull) {
       return undefined;
     }
-    const compareResult = comparatorFunction(value, columnValues);
+    // Temporal values are compared as epoch milliseconds, so that equality
+    // checks and gradient opacity work for date/datetime cells.
+    const comparableValue = value instanceof Date ? value.getTime() : value;
+    const compareResult = comparatorFunction(comparableValue, normalizedValues);
     if (compareResult === false) return undefined;
     const { cutoffValue, extremeValue, opacityValue } = compareResult;
-    const resolvedValue = opacityValue ?? value;
+    const resolvedValue = opacityValue ?? comparableValue;
 
     if (
       useGradient !== false &&
@@ -445,7 +462,7 @@ export const getColorFunction = (
         return addAlpha(
           cleanHex,
           getOpacity(
-            opacityValue ?? value,
+            opacityValue ?? comparableValue,
             cutoffValue,
             extremeValue,
             minOpacity,
@@ -469,7 +486,7 @@ export const getColorFunction = (
       return addAlpha(
         baseHexColor,
         getOpacity(
-          opacityValue ?? value,
+          opacityValue ?? comparableValue,
           cutoffValue,
           extremeValue,
           minOpacity,
@@ -536,7 +553,13 @@ export const getColorFormatters: MemoizedFn<GetColorFormatters> = memoizeOne(
             objectFormatting: config?.objectFormatting,
             getColorFromValue: getColorFunction(
               { ...colorFunctionConfig, colorScheme: resolvedColorScheme },
-              data.map(row => row[config.column!] as number),
+              data.map(row => {
+                const cellValue = row[config.column!];
+                // Temporal values are compared as epoch milliseconds
+                return (
+                  cellValue instanceof Date ? cellValue.getTime() : cellValue
+                ) as number;
+              }),
               alpha,
             ),
           });

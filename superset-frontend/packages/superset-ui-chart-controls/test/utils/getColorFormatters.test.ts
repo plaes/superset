@@ -1570,3 +1570,166 @@ test('getColorFunction GREATER_THAN ignores diverging fields even when fully set
   );
   expect(colorFunction(100)).toEqual('#FF0000FF');
 });
+
+// ---------------------------------------------------------------------------
+// Temporal values
+// Temporal cells (Date, and Date subclasses such as the table chart's
+// DateWithFormatter) are compared as epoch milliseconds.
+// ---------------------------------------------------------------------------
+
+const dateData = [
+  { event_date: new Date('2024-01-01T00:00:00Z') },
+  { event_date: new Date('2024-01-15T00:00:00Z') },
+  { event_date: new Date('2024-02-01T00:00:00Z') },
+];
+const dateValues = dateData.map(row => row.event_date);
+const JAN_1 = new Date('2024-01-01T00:00:00Z').getTime();
+const JAN_15 = new Date('2024-01-15T00:00:00Z').getTime();
+const FEB_1 = new Date('2024-02-01T00:00:00Z').getTime();
+
+test('getOpacity scales temporal values by epoch milliseconds', () => {
+  expect(getOpacity(new Date(75), new Date(50), new Date(100))).toEqual(0.53);
+  expect(getOpacity(new Date(75), 50, 100)).toEqual(0.53);
+  expect(getOpacity(new Date(100), new Date(100), new Date(100))).toEqual(1);
+});
+
+test('getOpacity scales pre-epoch (negative) temporal values', () => {
+  // Dates before 1970 have negative epoch milliseconds; the scaling must
+  // work across the epoch boundary as well
+  const min = new Date('1969-12-01T00:00:00Z');
+  const mid = new Date('1969-12-16T00:00:00Z');
+  const max = new Date('1970-01-01T00:00:00Z');
+  expect(mid.getTime()).toBeLessThan(0);
+  expect(getOpacity(mid, min, max)).toEqual(0.51);
+  expect(getOpacity(min, min, max)).toEqual(0.05);
+  expect(getOpacity(max, min, max)).toEqual(1);
+});
+
+test('getColorFunction NONE colors pre-epoch dates across the gradient', () => {
+  const colorFunction = getColorFunction(
+    {
+      operator: Comparator.None,
+      colorScheme: '#FF0000',
+      column: 'event_date',
+    },
+    [new Date('1969-12-01T00:00:00Z'), new Date('1970-01-01T00:00:00Z')],
+  );
+  // Endpoints of the scale
+  expect(colorFunction(new Date('1969-12-01T00:00:00Z'))).toEqual('#FF000000');
+  expect(colorFunction(new Date('1970-01-01T00:00:00Z'))).toEqual('#FF0000FF');
+  // A pre-epoch date in between scales like any other value (15 of 31
+  // days: 0.48 opacity after rounding)
+  expect(colorFunction(new Date('1969-12-16T00:00:00Z'))).toEqual('#FF00007A');
+});
+
+test('getColorFunction GREATER_THAN with temporal values', () => {
+  const colorFunction = getColorFunction(
+    {
+      operator: Comparator.GreaterThan,
+      targetValue: JAN_1,
+      colorScheme: '#FF0000',
+      column: 'event_date',
+    },
+    dateValues,
+  );
+  expect(colorFunction(new Date('2023-12-31T00:00:00Z'))).toBeUndefined();
+  expect(colorFunction(new Date('2024-01-01T00:00:00Z'))).toBeUndefined();
+  expect(colorFunction(new Date('2024-01-15T00:00:00Z'))).toEqual('#FF00007A');
+  expect(colorFunction(new Date('2024-02-01T00:00:00Z'))).toEqual('#FF0000FF');
+});
+
+test('getColorFunction EQUAL with temporal values', () => {
+  const colorFunction = getColorFunction(
+    {
+      operator: Comparator.Equal,
+      targetValue: JAN_15,
+      colorScheme: '#FF0000',
+      column: 'event_date',
+    },
+    dateValues,
+  );
+  expect(colorFunction(new Date('2024-01-01T00:00:00Z'))).toBeUndefined();
+  expect(colorFunction(new Date('2024-01-15T00:00:00Z'))).toEqual('#FF0000FF');
+  expect(colorFunction(new Date('2024-02-01T00:00:00Z'))).toBeUndefined();
+});
+
+test('getColorFunction NOT_EQUAL with temporal values', () => {
+  const colorFunction = getColorFunction(
+    {
+      operator: Comparator.NotEqual,
+      targetValue: JAN_15,
+      colorScheme: '#FF0000',
+      column: 'event_date',
+    },
+    dateValues,
+  );
+  expect(colorFunction(new Date('2024-01-01T00:00:00Z'))).toBeDefined();
+  expect(colorFunction(new Date('2024-01-15T00:00:00Z'))).toBeUndefined();
+});
+
+test('getColorFunction BETWEEN with temporal values', () => {
+  const colorFunction = getColorFunction(
+    {
+      operator: Comparator.Between,
+      targetValueLeft: JAN_1,
+      targetValueRight: FEB_1,
+      colorScheme: '#FF0000',
+      column: 'event_date',
+    },
+    dateValues,
+  );
+  expect(colorFunction(new Date('2023-12-31T00:00:00Z'))).toBeUndefined();
+  expect(colorFunction(new Date('2024-01-15T00:00:00Z'))).toEqual('#FF00007A');
+  // Boundaries are exclusive for the strict between operator
+  expect(colorFunction(new Date('2024-01-01T00:00:00Z'))).toBeUndefined();
+  expect(colorFunction(new Date('2024-02-01T00:00:00Z'))).toBeUndefined();
+});
+
+test('getColorFunction NONE colors all temporal values', () => {
+  const colorFunction = getColorFunction(
+    {
+      operator: Comparator.None,
+      colorScheme: '#FF0000',
+      column: 'event_date',
+    },
+    dateValues,
+  );
+  expect(colorFunction(new Date('2024-01-01T00:00:00Z'))).toBeDefined();
+  expect(colorFunction(new Date('2024-02-01T00:00:00Z'))).toBeDefined();
+});
+
+test('getColorFunction works with Date subclasses', () => {
+  // The table chart wraps temporal cells in a Date subclass
+  class DateWithFormatter extends Date {}
+  const colorFunction = getColorFunction(
+    {
+      operator: Comparator.GreaterThan,
+      targetValue: JAN_1,
+      colorScheme: '#FF0000',
+      column: 'event_date',
+    },
+    dateValues.map(value => new DateWithFormatter(value)),
+  );
+  expect(colorFunction(new DateWithFormatter(JAN_15))).toEqual('#FF00007A');
+});
+
+test('getColorFormatters normalizes temporal cell values', () => {
+  const formatters = getColorFormatters(
+    [
+      {
+        column: 'event_date',
+        operator: Comparator.Equal,
+        targetValue: JAN_15,
+        colorScheme: '#FF0000',
+      },
+    ],
+    dateData,
+  );
+  expect(formatters).toHaveLength(1);
+  expect(
+    formatters[0].getColorFromValue(new Date('2024-01-15T00:00:00Z')),
+  ).toEqual('#FF0000FF');
+  expect(
+    formatters[0].getColorFromValue(new Date('2024-02-01T00:00:00Z')),
+  ).toBeUndefined();
+});
