@@ -416,3 +416,55 @@ test('columnOptions defaults type_generic to String when missing from datasource
     ]),
   );
 });
+
+const createMockChartWithTemporalColumn = () => ({
+  chartStatus: 'success' as const,
+  queriesResponse: [
+    {
+      colnames: ['col1', 'date_col'],
+      coltypes: [GenericDataType.Numeric, GenericDataType.Temporal],
+    },
+  ],
+});
+
+test('columnOptions includes temporal columns when time comparison is disabled', () => {
+  const controlConfig = findConditionalFormattingControl();
+  expect(controlConfig).toBeTruthy();
+
+  const explore = createMockExplore(undefined);
+  const chart = createMockChartWithTemporalColumn();
+  const result = controlConfig!.mapStateToProps!(
+    explore,
+    createMockControlStateForConditionalFormatting(),
+    chart,
+  );
+
+  expect(result.columnOptions).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        value: 'date_col',
+        dataType: GenericDataType.Temporal,
+      }),
+    ]),
+  );
+  expect(result.allColumns).toEqual(
+    expect.arrayContaining([expect.objectContaining({ value: 'date_col' })]),
+  );
+});
+
+test('columnOptions excludes temporal columns when time comparison is enabled', () => {
+  const controlConfig = findConditionalFormattingControl();
+  expect(controlConfig).toBeTruthy();
+
+  const explore = createMockExplore(['P1D']);
+  const chart = createMockChartWithTemporalColumn();
+  const result = controlConfig!.mapStateToProps!(
+    explore,
+    createMockControlStateForConditionalFormatting(),
+    chart,
+  );
+
+  expect(result.columnOptions).not.toEqual(
+    expect.arrayContaining([expect.objectContaining({ value: 'date_col' })]),
+  );
+});

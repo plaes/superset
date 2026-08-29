@@ -775,7 +775,7 @@ const config: ControlPanelConfig = {
               renderTrigger: true,
               label: t('Custom conditional formatting'),
               description: t(
-                'Apply conditional color formatting to numeric columns',
+                'Apply conditional color formatting to numeric, string, boolean and temporal columns',
               ),
               shouldMapStateToProps() {
                 return true;
@@ -864,11 +864,15 @@ const config: ControlPanelConfig = {
                   : [];
                 const numericColumns = hasColumns
                   ? colnames.reduce((acc, colname, index) => {
+                      // String, boolean and temporal columns are only offered
+                      // without an active time comparison: the comparison
+                      // column set is built from numeric metrics only.
                       if (
                         coltypes[index] === GenericDataType.Numeric ||
                         (!hasTimeComparison &&
                           (coltypes[index] === GenericDataType.String ||
-                            coltypes[index] === GenericDataType.Boolean))
+                            coltypes[index] === GenericDataType.Boolean ||
+                            coltypes[index] === GenericDataType.Temporal))
                       ) {
                         acc.push({
                           value: colname,
