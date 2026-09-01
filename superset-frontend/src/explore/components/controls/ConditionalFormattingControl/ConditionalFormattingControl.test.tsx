@@ -126,3 +126,29 @@ test('renders temporal target values as readable dates in the label', () => {
   expect(screen.getByText('my_date > 2024-01-15 10:30:00')).toBeInTheDocument();
 });
 
+test('renders relative temporal targets as readable labels', () => {
+  const value: ConditionalFormattingConfig[] = [
+    {
+      column: 'my_date',
+      operator: Comparator.GreaterOrEqual,
+      targetValueRelative: { value: -5, unit: 'day' },
+      colorScheme: '#FF0000',
+    },
+    {
+      column: 'my_date',
+      operator: Comparator.LessThan,
+      targetValueRelative: { value: 1, unit: 'hour' },
+      colorScheme: '#FF0000',
+    },
+  ];
+  render(
+    <ConditionalFormattingControl
+      {...defaultProps}
+      columnOptions={temporalColumnOptions}
+      value={value}
+    />,
+  );
+  expect(screen.getByText('my_date ≥ 5 days before now')).toBeInTheDocument();
+  // Singular units stay unpluralized
+  expect(screen.getByText('my_date < 1 hour after now')).toBeInTheDocument();
+});

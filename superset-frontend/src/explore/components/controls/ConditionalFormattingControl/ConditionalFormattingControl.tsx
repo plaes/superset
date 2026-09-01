@@ -20,10 +20,13 @@ import { useEffect, useState } from 'react';
 import { t } from '@apache-superset/core/translation';
 import { styled, css } from '@apache-superset/core/theme';
 import { GenericDataType } from '@apache-superset/core/common';
-import { Comparator } from '@superset-ui/chart-controls';
+import {
+  Comparator,
+  type RelativeTemporalTarget,
+} from '@superset-ui/chart-controls';
 import { Icons } from '@superset-ui/core/components/Icons';
-import ControlHeader from 'src/explore/components/ControlHeader';
 import { extendedDayjs } from '@superset-ui/core/utils/dates';
+import ControlHeader from 'src/explore/components/ControlHeader';
 import { FormattingPopover } from './FormattingPopover';
 import {
   ConditionalFormattingConfig,
@@ -125,6 +128,7 @@ const ConditionalFormattingControl = ({
     column,
     operator,
     targetValue,
+    targetValueRelative,
     targetValueLeft,
     targetValueRight,
   }: ConditionalFormattingConfig) => {
@@ -139,6 +143,16 @@ const ConditionalFormattingControl = ({
       isTemporalColumn && typeof value === 'number'
         ? extendedDayjs.utc(value).format('YYYY-MM-DD HH:mm:ss')
         : value;
+    // Relative temporal targets render as e.g. "5 days before now"; the
+    // sign of the stored value carries the direction
+    const formatRelativeTarget = (
+      target: RelativeTemporalTarget | undefined,
+    ) =>
+      target
+        ? `${Math.abs(target.value)} ${target.unit}${
+            Math.abs(target.value) === 1 ? '' : 's'
+          } ${target.value < 0 ? t('before now') : t('after now')}`
+        : undefined;
     switch (operator) {
       case Comparator.None:
         return `${columnName}`;
@@ -156,7 +170,11 @@ const ConditionalFormattingControl = ({
       case Comparator.IsNotNull:
         return `${columnName} ${operator}`;
       default:
-        return `${columnName} ${operator} ${formatTargetValue(targetValue)}`;
+        return `${columnName} ${operator} ${
+          targetValueRelative
+            ? formatRelativeTarget(targetValueRelative)
+            : formatTargetValue(targetValue)
+        }`;
     }
   };
 
