@@ -31,6 +31,7 @@ import {
   getReadableTextColor,
   getNormalizedTextColor,
   getTextColorForBackground,
+  resolveRelativeTemporalBoundary,
 } from '../../src/utils/getColorFormatters';
 
 configure();
@@ -1732,4 +1733,68 @@ test('getColorFormatters normalizes temporal cell values', () => {
   expect(
     formatters[0].getColorFromValue(new Date('2024-02-01T00:00:00Z')),
   ).toBeUndefined();
+});
+
+// ---------------------------------------------------------------------------
+// Relative temporal targets ("5 days before now")
+// ---------------------------------------------------------------------------
+
+test('resolveRelativeTemporalBoundary shifts sub-day units by milliseconds', () => {
+  const now = new Date('2024-01-20T12:00:00Z').getTime();
+  // Negative values shift before now, positive values after now
+  expect(resolveRelativeTemporalBoundary({ value: -5, unit: 'day' }, now)).toBe(
+    now - 5 * 86_400_000,
+  );
+  expect(resolveRelativeTemporalBoundary({ value: 2, unit: 'hour' }, now)).toBe(
+    now + 2 * 3_600_000,
+  );
+  expect(
+    resolveRelativeTemporalBoundary({ value: -1, unit: 'week' }, now),
+  ).toBe(now - 7 * 86_400_000);
+});
+
+test('resolveRelativeTemporalBoundary uses calendar arithmetic for months and years', () => {
+  const now = new Date('2024-03-31T12:00:00Z').getTime();
+  // One month before Mar 31 clamps to the end of February (leap year)
+  expect(
+    resolveRelativeTemporalBoundary({ value: -1, unit: 'month' }, now),
+  ).toBe(new Date('2024-02-29T12:00:00Z').getTime());
+  expect(resolveRelativeTemporalBoundary({ value: 1, unit: 'year' }, now)).toBe(
+    new Date('2025-03-31T12:00:00Z').getTime(),
+  );
+});
+
+test('getColorFunction GREATER_THAN with a relative temporal target', () => {
+  jest.useFakeTimers().setSystemTime(new Date('2024-01-20T00:00:00Z'));
+  try {
+    const day = 86_400_000;
+    const now = Date.now();
+    const colorFunction = getColorFunction(
+      {
+        operator: Comparator.GreaterThan,
+        targetValueRelative: { value: -5, unit: 'day' },
+        colorScheme: '#FF0000',
+        column: 'event_date',
+      },
+      [new Date(now - 6 * day), new Date(now - 4 * day)],
+    );
+    // The boundary is now - 5 days
+    expect(colorFunction(new Date(now - 6 * day))).toBeUndefined();
+    expect(colorFunction(new Date(now - 4 * day))).toEqual('#FF0000FF');
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('getColorFunction ignores relative targets with a zero value', () => {
+  const colorFunction = getColorFunction(
+    {
+      operator: Comparator.GreaterThan,
+      targetValueRelative: { value: 0, unit: 'day' },
+      colorScheme: '#FF0000',
+      column: 'event_date',
+    },
+    dateValues,
+  );
+  expect(colorFunction(dateValues[0])).toBeUndefined();
 });

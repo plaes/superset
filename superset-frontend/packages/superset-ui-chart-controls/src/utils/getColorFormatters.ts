@@ -27,6 +27,7 @@ import {
   Comparator,
   ConditionalFormattingConfig,
   MultipleValueComparators,
+  RelativeTemporalTarget,
   ResolvedColorFormatterResult,
   ColorSchemeEnum,
   BoundUnit,
@@ -50,6 +51,49 @@ const toNumber = (value: number | string | Date): number =>
     : typeof value === 'string'
       ? parseFloat(value)
       : value;
+
+/**
+ * Resolves a relative temporal target to an epoch-millisecond boundary.
+ * Hour, day and week units shift by milliseconds; month and year units use
+ * calendar arithmetic so that e.g. "1 month before" crosses month
+ * boundaries.
+ */
+export const resolveRelativeTemporalBoundary = (
+  target: RelativeTemporalTarget,
+  now: number = Date.now(),
+): number => {
+  switch (target.unit) {
+    case 'hour':
+    case 'day':
+    case 'week': {
+      const unitMs =
+        target.unit === 'hour'
+          ? 3_600_000
+          : target.unit === 'day'
+            ? 86_400_000
+            : 604_800_000;
+      return now + target.value * unitMs;
+    }
+    case 'month':
+    default: {
+      // UTC-based so the result is independent of the viewer's timezone.
+      // Native setUTCMonth/setUTCFullYear overflow into the next month when
+      // the target month is shorter, so clamp to its last day instead
+      // (e.g. Mar 31 -> Feb 29, Feb 29 -> Feb 28).
+      const date = new Date(now);
+      const day = date.getUTCDate();
+      if (target.unit === 'month') {
+        date.setUTCMonth(date.getUTCMonth() + target.value);
+      } else {
+        date.setUTCFullYear(date.getUTCFullYear() + target.value);
+      }
+      if (date.getUTCDate() !== day) {
+        date.setUTCDate(0);
+      }
+      return date.getTime();
+    }
+  }
+};
 
 export const getOpacity = (
   value: number | string | boolean | Date | null,
@@ -143,7 +187,8 @@ const isSpecialColor = (value: unknown): value is ColorSchemeEnum =>
 export const getColorFunction = (
   {
     operator,
-    targetValue,
+    targetValue: rawTargetValue,
+    targetValueRelative,
     targetValueLeft,
     targetValueRight,
     colorScheme,
@@ -160,6 +205,15 @@ export const getColorFunction = (
   columnValues: (number | string | boolean | Date | null)[],
   alpha?: boolean,
 ) => {
+  // A relative temporal target (e.g. "5 days before now") is resolved to an
+  // epoch-millisecond boundary when the formatter is built, so the rest of
+  // the comparison logic works unchanged. A zero value (no offset) falls
+  // back to the absolute target (or no target, which disables the rule).
+  const targetValue =
+    targetValueRelative && targetValueRelative.value !== 0
+      ? resolveRelativeTemporalBoundary(targetValueRelative)
+      : rawTargetValue;
+
   const resolvePercentBound = (bound: number | undefined) => {
     if (boundUnit !== BoundUnit.Percent || bound === undefined) {
       return bound;

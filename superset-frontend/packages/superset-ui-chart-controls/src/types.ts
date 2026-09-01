@@ -504,9 +504,22 @@ export enum PercentDenominator {
   Max = 'max',
 }
 
+/** Time units accepted by relative temporal targets */
+export type TemporalUnit = 'hour' | 'day' | 'week' | 'month' | 'year';
+
+/**
+ * A temporal target relative to the current time, e.g. "5 days before now".
+ * The value is signed: negative = before now, positive = after now.
+ */
+export type RelativeTemporalTarget = {
+  value: number;
+  unit: TemporalUnit;
+};
+
 export type ConditionalFormattingConfig = {
   operator?: Comparator;
   targetValue?: number | string;
+  targetValueRelative?: RelativeTemporalTarget;
   targetValueLeft?: number;
   targetValueRight?: number;
   column?: string;
