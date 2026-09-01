@@ -1503,6 +1503,58 @@ test('The Use Gradient checkbox is displayed for temporal data types', () => {
   expect(screen.queryByText('Use gradient')).toBeInTheDocument();
 });
 
+test('submits a relative temporal target when the mode is relative', async () => {
+  render(
+    <FormattingPopoverContent
+      onChange={mockOnChange}
+      columns={columnsTemporalType}
+    />,
+  );
+
+  // Pick a comparison operator so the target editor is visible
+  const operatorSelect = screen.getByLabelText('Operator');
+  fireEvent.change(operatorSelect, { target: { value: '≥' } });
+  fireEvent.click(await screen.findByTitle('≥'));
+
+  // Switch to the relative-to-now editor
+  fireEvent.click(screen.getByLabelText('Relative to now'));
+
+  // The unit keeps its default (day); set a signed offset (-5 = 5 days
+  // before now)
+  const offsetInput = await screen.findByLabelText('Offset');
+  fireEvent.change(offsetInput, { target: { value: '-5' } });
+  fireEvent.blur(offsetInput);
+
+  fireEvent.click(screen.getByText('Apply'));
+  await waitFor(() => {
+    expect(mockOnChange).toHaveBeenCalled();
+  });
+  const config = mockOnChange.mock.calls[mockOnChange.mock.calls.length - 1][0];
+  expect(config.targetValueRelative).toEqual({
+    value: -5,
+    unit: 'day',
+  });
+  expect(config.targetValue).toBeUndefined();
+});
+
+test('renders a saved relative temporal target in relative mode', async () => {
+  render(
+    <FormattingPopoverContent
+      onChange={mockOnChange}
+      columns={columnsTemporalType}
+      config={{
+        column: 'column1',
+        operator: Comparator.GreaterOrEqual,
+        targetValueRelative: { value: -5, unit: 'day' },
+      }}
+    />,
+  );
+
+  const relativeRadio = await screen.findByLabelText('Relative to now');
+  expect(relativeRadio).toBeChecked();
+  expect(screen.getByLabelText('Offset')).toHaveValue('-5');
+});
+
 test('parses a string target value for a temporal column', async () => {
   const errors: unknown[] = [];
   const origError = console.error;

@@ -54,6 +54,14 @@ export const booleanOperatorOptions = [
   { value: Comparator.IsNotNull, label: t('is not null') },
 ];
 
+export const temporalUnitOptions = [
+  { value: 'hour', label: t('hours') },
+  { value: 'day', label: t('days') },
+  { value: 'week', label: t('weeks') },
+  { value: 'month', label: t('months') },
+  { value: 'year', label: t('years') },
+];
+
 // Temporal values are compared as epoch milliseconds, so the numeric
 // comparison set applies to date/datetime/time columns.
 export const temporalOperatorOptions = [

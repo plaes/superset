@@ -25,6 +25,7 @@ import {
   ObjectFormattingEnum,
   BoundUnit,
   PercentDenominator,
+  RelativeTemporalTarget,
 } from '@superset-ui/chart-controls';
 import { GenericDataType } from '@apache-superset/core/common';
 import { type RGBColor } from '@superset-ui/core/components';
@@ -34,6 +35,7 @@ export type ConditionalFormattingConfig = {
   // Temporal targets are stored as epoch milliseconds; string columns
   // store the matched text.
   targetValue?: number | string;
+  targetValueRelative?: RelativeTemporalTarget;
   targetValueLeft?: number | string;
   targetValueRight?: number | string;
   column?: string;

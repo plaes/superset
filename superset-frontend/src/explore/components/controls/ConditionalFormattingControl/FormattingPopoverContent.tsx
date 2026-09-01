@@ -38,9 +38,11 @@ import {
   Row,
   Checkbox,
   DatePicker,
+  Radio,
   type FormProps,
 } from '@superset-ui/core/components';
 import { extendedDayjs, type Dayjs } from '@superset-ui/core/utils/dates';
+import { type TemporalUnit } from '@superset-ui/chart-controls';
 import { ConditionalFormattingConfig, ColumnOption } from './types';
 import {
   operatorOptions,
@@ -48,6 +50,7 @@ import {
   booleanOperatorOptions,
   temporalOperatorOptions,
   temporalTargetFormats,
+  temporalUnitOptions,
   formattingOptions,
   colorScheme,
   boundUnitOptions,
@@ -232,15 +235,20 @@ const shouldFormItemUpdate = (
   prevValues: ConditionalFormattingConfig,
   currentValues: ConditionalFormattingConfig,
 ) => {
+  // The form also carries form-local fields (targetMode) that are not part
+  // of the config type
+  type FormValues = ConditionalFormattingConfig & { targetMode?: string };
+  const prev = prevValues as FormValues;
+  const curr = currentValues as FormValues;
   const prevBounds = getBoundVisibility(prevValues.operator);
   const currentBounds = getBoundVisibility(currentValues.operator);
   return (
-    isOperatorNone(prevValues.operator) !==
-      isOperatorNone(currentValues.operator) ||
-    isOperatorMultiValue(prevValues.operator) !==
-      isOperatorMultiValue(currentValues.operator) ||
+    isOperatorNone(prev.operator) !== isOperatorNone(curr.operator) ||
+    isOperatorMultiValue(prev.operator) !==
+      isOperatorMultiValue(curr.operator) ||
     prevBounds.showMin !== currentBounds.showMin ||
-    prevBounds.showMax !== currentBounds.showMax
+    prevBounds.showMax !== currentBounds.showMax ||
+    prev.targetMode !== curr.targetMode
   );
 };
 
@@ -534,15 +542,68 @@ const renderOperatorFields = (
         <Col span={operatorColSpan}>
           {renderOperator({ columnType, config })}
         </Col>
-        <Col span={valueColSpan}>
-          <FormItem
-            name="targetValue"
-            label={t('Target value')}
-            rules={rulesRequired}
-          >
-            {targetValueInput}
-          </FormItem>
-        </Col>
+        {columnTypeTemporal ? (
+          <Col span={valueColSpan}>
+            {/* Target mode is form-local: it derives from the stored config
+                (targetValueRelative) and is stripped on submit */}
+            <FormItem name="targetMode" initialValue="absolute">
+              <Radio.GroupWrapper
+                aria-label={t('Target value type')}
+                options={[
+                  { value: 'absolute', label: t('Absolute date') },
+                  { value: 'relative', label: t('Relative to now') },
+                ]}
+              />
+            </FormItem>
+            {getFieldValue('targetMode') === 'relative' ? (
+              <Row gutter={12}>
+                {/* Signed offset from now: negative = before now, positive
+                    = after now */}
+                <Col span={8}>
+                  <FormItem
+                    name="relativeValue"
+                    label={t('Offset')}
+                    rules={rulesRequired}
+                    initialValue={-1}
+                  >
+                    <FullWidthInputNumber precision={0} />
+                  </FormItem>
+                </Col>
+                <Col span={8}>
+                  <FormItem
+                    name="relativeUnit"
+                    label={t('Unit')}
+                    rules={rulesRequired}
+                    initialValue="day"
+                  >
+                    <Select
+                      ariaLabel={t('Unit')}
+                      options={temporalUnitOptions}
+                    />
+                  </FormItem>
+                </Col>
+              </Row>
+            ) : (
+              <FormItem
+                name="targetValue"
+                label={t('Target value')}
+                rules={rulesRequired}
+              >
+                {targetValueInput}
+              </FormItem>
+            )}
+          </Col>
+        ) : (
+          <Col span={valueColSpan}>
+            <FormItem
+              name="targetValue"
+              label={t('Target value')}
+              rules={rulesRequired}
+            >
+              {targetValueInput}
+            </FormItem>
+          </Col>
+        )}
       </Row>
       {showBoundFields && renderBoundFields(operator, serverPagination, config)}
     </>
@@ -730,6 +791,12 @@ export const FormattingPopoverContent = ({
     };
     return {
       ...formInitialValues,
+      // Form-local fields seeding the relative target editor
+      targetMode: formInitialValues.targetValueRelative
+        ? 'relative'
+        : 'absolute',
+      relativeValue: formInitialValues.targetValueRelative?.value,
+      relativeUnit: formInitialValues.targetValueRelative?.unit,
       targetValue: toDayjs(formInitialValues.targetValue),
       targetValueLeft: toDayjs(formInitialValues.targetValueLeft),
       targetValueRight: toDayjs(formInitialValues.targetValueRight),
@@ -742,10 +809,15 @@ export const FormattingPopoverContent = ({
       targetValue?: Dayjs | number | string | null;
       targetValueLeft?: Dayjs | number | string | null;
       targetValueRight?: Dayjs | number | string | null;
+      targetMode?: string;
+      relativeValue?: number;
+      relativeUnit?: TemporalUnit;
     },
   ) => {
+    // Form-local fields never reach the stored config
+    const { targetMode, relativeValue, relativeUnit, ...rest } = values;
     if (columnType !== GenericDataType.Temporal) {
-      handleFinish(values);
+      handleFinish(rest);
       return;
     }
     // The date picker passes Dayjs objects (or null when cleared); stored
@@ -778,11 +850,24 @@ export const FormattingPopoverContent = ({
         parsed.millisecond(),
       );
     };
+    // A relative target stays a spec in the stored config; the formatter
+    // resolves its boundary against the current time at render time
+    const isRelative =
+      targetMode === 'relative' &&
+      typeof relativeValue === 'number' &&
+      relativeValue !== 0 &&
+      relativeUnit !== undefined;
     handleFinish({
-      ...values,
-      targetValue: toEpochMs(values.targetValue),
-      targetValueLeft: toEpochMs(values.targetValueLeft),
-      targetValueRight: toEpochMs(values.targetValueRight),
+      ...rest,
+      targetValue: isRelative ? undefined : toEpochMs(rest.targetValue),
+      targetValueRelative: isRelative
+        ? {
+            value: relativeValue,
+            unit: relativeUnit,
+          }
+        : undefined,
+      targetValueLeft: toEpochMs(rest.targetValueLeft),
+      targetValueRight: toEpochMs(rest.targetValueRight),
     });
   };
 
