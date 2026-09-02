@@ -47,6 +47,7 @@ import {
   stringOperatorOptions,
   booleanOperatorOptions,
   temporalOperatorOptions,
+  temporalTargetFormats,
   formattingOptions,
   colorScheme,
   boundUnitOptions,
@@ -474,7 +475,7 @@ const renderOperatorFields = (
   // the injected `id`/`value` props reach the picker (and the label stays
   // associated with the input).
   const targetValueInput = columnTypeTemporal ? (
-    <DatePicker showTime />
+    <DatePicker showTime format={temporalTargetFormats} />
   ) : columnTypeString ? (
     <FullWidthInput />
   ) : (
@@ -503,7 +504,7 @@ const renderOperatorFields = (
           trigger="onBlur"
         >
           {columnTypeTemporal ? (
-            <DatePicker showTime />
+            <DatePicker showTime format={temporalTargetFormats} />
           ) : (
             <FullWidthInputNumber />
           )}
@@ -520,7 +521,7 @@ const renderOperatorFields = (
           trigger="onBlur"
         >
           {columnTypeTemporal ? (
-            <DatePicker showTime />
+            <DatePicker showTime format={temporalTargetFormats} />
           ) : (
             <FullWidthInputNumber />
           )}

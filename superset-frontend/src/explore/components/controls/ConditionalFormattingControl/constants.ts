@@ -105,3 +105,13 @@ export const colorScheme = () => [
     ],
   },
 ];
+
+// Accepted input formats for the temporal target pickers: the first
+// format is used for display, the rest let hand-typed partial dates be
+// completed with defaults (e.g. "2003-03" -> 2003-03-01 00:00:00)
+export const temporalTargetFormats = [
+  'YYYY-MM-DD HH:mm:ss',
+  'YYYY-MM-DD',
+  'YYYY-MM',
+  'YYYY',
+];

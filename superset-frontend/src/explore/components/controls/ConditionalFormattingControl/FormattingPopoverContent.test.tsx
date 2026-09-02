@@ -1542,3 +1542,40 @@ test('parses a string target value for a temporal column', async () => {
   );
   expect(typeErrors).toEqual([]);
 });
+
+test('accepts partial dates typed into the temporal target picker', async () => {
+  render(
+    <FormattingPopoverContent
+      onChange={mockOnChange}
+      columns={columnsTemporalType}
+    />,
+  );
+
+  fireEvent.change(screen.getAllByLabelText('Operator')[0], {
+    target: { value: Comparator.GreaterThan },
+  });
+  fireEvent.click(await screen.findByTitle('>'));
+
+  const targetValue = await screen.findByLabelText('Target value');
+
+  // Year only completes to the first day of the year
+  fireEvent.input(targetValue, { target: { value: '2003' } });
+  fireEvent.keyDown(targetValue, { key: 'Enter', code: 'Enter', charCode: 13 });
+  await waitFor(() => {
+    expect(targetValue).toHaveValue('2003-01-01 00:00:00');
+  });
+
+  // Year and month complete to the first day of the month
+  fireEvent.input(targetValue, { target: { value: '2003-03' } });
+  fireEvent.keyDown(targetValue, { key: 'Enter', code: 'Enter', charCode: 13 });
+  await waitFor(() => {
+    expect(targetValue).toHaveValue('2003-03-01 00:00:00');
+  });
+
+  fireEvent.click(screen.getByText('Apply'));
+  await waitFor(() => {
+    expect(mockOnChange).toHaveBeenCalled();
+  });
+  const config = mockOnChange.mock.calls[mockOnChange.mock.calls.length - 1][0];
+  expect(config.targetValue).toBe(Date.UTC(2003, 2, 1, 0, 0, 0));
+});
