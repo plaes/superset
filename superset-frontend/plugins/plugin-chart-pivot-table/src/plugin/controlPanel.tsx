@@ -31,7 +31,6 @@ import {
   QueryFormMetric,
   SMART_DATE_ID,
   validateNonEmpty,
-  QueryFormColumn,
 } from '@superset-ui/core';
 import { MetricsLayoutEnum, ShowValuesAsEnum } from '../types';
 
@@ -401,16 +400,14 @@ const config: ControlPanelConfig = {
                 return true;
               },
               mapStateToProps(explore, _, chart) {
-                const metrics =
-                  (explore?.controls?.metrics?.value as QueryFormMetric[]) ??
-                  [];
-                const columns =
-                  (explore?.controls?.groupbyColumns
-                    ?.value as QueryFormColumn[]) ?? [];
-                const rows =
-                  (explore?.controls?.groupbyRows
-                    ?.value as QueryFormColumn[]) ?? [];
-                const values = [...new Set([...metrics, ...columns, ...rows])];
+                // The renderer colors metric cells only, so only metrics
+                // are offered as format targets
+                const values = [
+                  ...new Set(
+                    (explore?.controls?.metrics?.value as QueryFormMetric[]) ??
+                      [],
+                  ),
+                ];
 
                 const verboseMap = explore?.datasource?.hasOwnProperty(
                   'verbose_map',
